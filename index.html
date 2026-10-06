@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="ru" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#B8A9D9" />
+  <meta name="description" content="MindBalance — спокойное пространство для ежедневного отслеживания настроения, тревожности и энергии." />
+  <title>MindBalance — трекер ментального состояния</title>
+
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Стек (CDN, как разрешено ТЗ): React + Tailwind + Recharts + Lucide -->
+  <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prop-types@15.8.1/prop-types.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide-react@0.454.0/dist/umd/lucide-react.js"></script>
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.25.6/babel.min.js"></script>
+
+  <!-- Дизайн-система: пастель (шалфей, лаванда, тёплый песок), тёмная тема через класс dark -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            lavender: { 100: '#F1EDF9', 200: '#E4DDF2', 300: '#CFC3E8', 400: '#B8A9D9', 500: '#9C8AC4' },
+            sage:     { 100: '#EFF3EC', 200: '#DFE7DA', 300: '#C8D5C2', 400: '#A8BCA1', 500: '#8BA383' },
+            sand:     { 100: '#FAF4EA', 200: '#F5EDE1', 300: '#E8D5B7', 400: '#D9BC8F' },
+            ink:      { DEFAULT: '#3B3546', soft: '#6E677B' },
+            night:    { DEFAULT: '#1B1826', card: '#242033', soft: '#2E2940' }
+          },
+          fontFamily: { sans: ['Nunito', 'ui-rounded', 'system-ui', 'sans-serif'] },
+          boxShadow: { soft: '0 8px 30px rgba(120,105,160,0.12)' }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    html { -webkit-tap-highlight-color: transparent; }
+    body { transition: background-color .3s ease, color .3s ease; }
+    ::selection { background: #E4DDF2; }
+
+    /* Плавные, медленные анимации (0.3s+) — никаких резких скачков */
+    @keyframes mb-fade { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes mb-rise { from { opacity: 0; transform: translateY(16px) } to { opacity: 1; transform: none } }
+    @keyframes mb-pop  { 0% { opacity: 0; transform: scale(.85) } 60% { transform: scale(1.03) } 100% { opacity: 1; transform: scale(1) } }
+    .anim-fade { animation: mb-fade .4s ease both; }
+    .anim-up   { animation: mb-rise .45s cubic-bezier(.22,1,.36,1) both; }
+    .anim-pop  { animation: mb-pop .5s cubic-bezier(.22,1,.36,1) both; }
+
+    /* Дыхательное упражнение: медленный круг вдох-выдох (8 секунд на цикл) */
+    @keyframes mb-breath {
+      0%   { transform: scale(.72) }
+      45%  { transform: scale(1) }
+      55%  { transform: scale(1) }
+      100% { transform: scale(.72) }
+    }
+    .breath-circle { animation: mb-breath 8s ease-in-out infinite; }
+
+    /* Мягкие слайдеры */
+    input[type="range"] { -webkit-appearance: none; appearance: none; height: 8px; border-radius: 999px; outline: none; }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%;
+      background: #fff; border: 3px solid #B8A9D9; box-shadow: 0 2px 8px rgba(120,105,160,.35); cursor: pointer;
+      transition: transform .3s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.1); }
+    input[type="range"]::-moz-range-thumb {
+      width: 20px; height: 20px; border-radius: 50%; background: #fff;
+      border: 3px solid #B8A9D9; cursor: pointer;
+    }
+
+    /* Скроллбары — ненавязчивые */
+    * { scrollbar-width: thin; scrollbar-color: #CFC3E8 transparent; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #CFC3E8; border-radius: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+
+    @media print { .no-print { display: none !important; } }
+  </style>
+</head>
+
+<body class="bg-sand-100 dark:bg-night text-ink dark:text-lavender-100 font-sans antialiased">
+  <div id="root"></div>
+  <div id="toast-root" class="fixed bottom-24 sm:bottom-8 left-1/2 -translate-x-1/2 z-[70] flex flex-col items-center gap-2 pointer-events-none"></div>
+
+  <script type="text/babel" data-presets="react">
+    /* ================================================================
+       MindBalance — трекер ментального состояния (MVP)
+       Один файл: роутинг Onboarding -> Home -> Analytics -> Profile.
+       Данные — только в localStorage (приватность, работает офлайн).
+       ================================================================ */
+    const { useState, useEffect, useRef, useMemo, useContext, createContext, useCallback } = React;
+    const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } = Recharts;
+    const {
+      Home, LineChart: LineChartIcon, User, Sun, Moon, Plus, X, Check, Pencil, Mic,
+      ChevronLeft, ChevronRight, Trash2, Download, Bell, ShieldAlert, Sparkles,
+      Calendar: CalendarIcon, Heart, Phone, ArrowRight, Eye, EyeOff, Info, Activity
+    } = LucideReact;
+
+    /* ---------- Константы и дизайн-код ---------- */
+
+    // Шкала настроения 1–5 (без красного: мягкие приглушённые тона)
+    const MOODS = [
+      { v: 1, label: 'Очень тяжело', color: '#94A3B8' },
+      { v: 2, label: 'Тяжело',       color: '#B0A4C4' },
+      { v: 3, label: 'Нормально',    color: '#C9C2B8' },
+      { v: 4, label: 'Хорошо',       color: '#A8BCA1' },
+      { v: 5, label: 'Отлично',      color: '#9FC6A0' }
+    ];
+    const moodOf = (v) => MOODS.find((m) => m.v === v) || MOODS[2];
+
+    const DEFAULT_EMOTIONS = ['Радость', 'Грусть', 'Злость', 'Тревога', 'Спокойствие', 'Усталость'];
+    const DEFAULT_CONTEXTS = ['Работа', 'Семья', 'Здоровье', 'Отдых', 'Спорт'];
+
+    const TRACK_OPTIONS = [
+      { id: 'mood',     label: 'Настроение' },
+      { id: 'anxiety',  label: 'Тревожность' },
+      { id: 'energy',   label: 'Энергия' },
+      { id: 'sleep',    label: 'Сон' },
+      { id: 'meditation', label: 'Медитация' },
+      { id: 'meds',     label: 'Приём лекарств' }
+    ];
+
+    // Добрые тексты напоминаний (тон: поддерживающий, безоценочный)
+    const REMINDER_TEXTS = ['Как твой день?', 'Найди минутку для себя', 'Как ты себя чувствуешь?'];
+
+    // Телефоны доверия (дисклеймер: приложение не заменяет врача)
+    const SOS_LINES = [
+      { num: '112',        label: 'Единая служба спасения', desc: 'Экстренный вызов с любого телефона' },
+      { num: '88002000122', label: 'Экстренная психологическая помощь МЧС', desc: 'Круглосуточно, бесплатно по России' },
+      { num: '101', label: 'Пожарная служба', desc: '' },
+      { num: '102', label: 'Полиция', desc: '' },
+      { num: '103', label: 'Скорая медицинская помощь', desc: '' }
+    ];
+
+    const DISCLAIMER = 'Приложение не является заменой профессиональной медицинской помощи.';
+
+    /* ---------- Утилиты ---------- */
+    const STORAGE_KEY = 'mindbalance_v1';
+    const DRAFT_KEY = 'mindbalance_draft_v1';
+    const cx = (...a) => a.filter(Boolean).join(' ');
+    const uid = (p) => p + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+
+    function localDayKey(d) {
+      const x = new Date(d);
+      return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+    }
+    function ruDateShort(iso) {
+      return new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    }
+    function ruDateFull(d) {
+      return new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+    const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    function weekdayIdx(iso) { // 0 = понедельник
+      const w = new Date(iso).getDay();
+      return (w + 6) % 7;
+    }
+
+    /* ---------- Демо-данные (мягкий старт, стираются одной кнопкой) ---------- */
+    function seedEntries() {
+      // 11 записей за две недели: видны закономерности для графика и инсайтов
+      const plan = [
+        { d: 13, mood: 4, energy: 6, anxiety: 3, sleep: 7, ctx: ['Работа'],            emo: ['Спокойствие'],        note: 'Обычный день, всё по плану.' },
+        { d: 12, mood: 3, energy: 4, anxiety: 5, sleep: 6, ctx: ['Работа'],            emo: ['Усталость'],          note: 'Много совещаний к вечеру.' },
+        { d: 10, mood: 5, energy: 7, anxiety: 2, sleep: 8, ctx: ['Спорт', 'Отдых'],    emo: ['Радость'],            note: 'Прогулка в парке, хорошо выспалась.' },
+        { d: 9,  mood: 4, energy: 6, anxiety: 3, sleep: 7, ctx: ['Семья'],             emo: ['Спокойствие'],        note: '' },
+        { d: 7,  mood: 3, energy: 4, anxiety: 5, sleep: 6, ctx: ['Работа'],            emo: ['Тревога', 'Усталость'], note: 'Дедлайн по средам.' },
+        { d: 6,  mood: 4, energy: 6, anxiety: 3, sleep: 8, ctx: ['Спорт'],             emo: ['Спокойствие'],        note: 'Утренняя пробежка.' },
+        { d: 5,  mood: 5, energy: 8, anxiety: 2, sleep: 9, ctx: ['Отдых'],             emo: ['Радость'],            note: 'Выходные без планов — то, что нужно.' },
+        { d: 3,  mood: 4, energy: 6, anxiety: 3, sleep: 7, ctx: ['Семья', 'Здоровье'], emo: ['Спокойствие'],        note: '' },
+        { d: 2,  mood: 3, energy: 5, anxiety: 4, sleep: 6, ctx: ['Работа'],            emo: ['Усталость'],          note: 'После восьми часов сна куда легче — проверю ещё раз.' },
+        { d: 1,  mood: 4, energy: 7, anxiety: 3, sleep: 8, ctx: ['Спорт'],             emo: ['Спокойствие'],        note: '' },
+        { d: 0,  mood: 5, energy: 8, anxiety: 2, sleep: 8, ctx: ['Отдых'],             emo: ['Радость'],            note: 'Хорошее утро!' }
+      ];
+      const now = new Date();
+      return plan.map((p) => {
+        const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() - p.d, 21, 10, 0);
+        return {
+          id: uid('entry'),
+          timestamp: day.toISOString(),
+          mood_score: p.mood,
+          emotions: p.emo,
+          metrics: { energy: p.energy, anxiety: p.anxiety, sleep_quality: p.sleep },
+          context_tags: p.ctx,
+          note: p.note,
+          is_private: true
+        };
+      });
+    }
+
+    function initialState() {
+      return {
+        onboarded: false,
+        onb: { reminderTime: '21:00', reminderOn: false, reminderText: REMINDER_TEXTS[0], tracked: ['mood', 'anxiety', 'energy', 'sleep'] },
+        entries: seedEntries(),
+        emotionTags: DEFAULT_EMOTIONS.slice(),
+        contextTags: DEFAULT_CONTEXTS.slice(),
+        scales: { energy: true, anxiety: true, sleep: true },
+        theme: 'light',
+        pin: null
+      };
+    }
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.entries)) return Object.assign(initialState(), parsed);
+        }
+      } catch (e) { console.warn('Не удалось прочитать данные', e); }
+      return initialState();
+    }
+    function persist(state) {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); return true; }
+      catch (e) { console.warn('Не удалось сохранить данные', e); return false; }
+    }
+
+    /* ---------- Контексты ---------- */
+    const StoreCtx = createContext(null);
+    const useStore = () => useContext(StoreCtx);
+    const ToastCtx = createContext(() => {});
+
+    function useToast() { return useContext(ToastCtx); }
+
+    // Тосты: мягкие, живут 3.2 секунды
+    function showToast(msg, kind) {
+      const root = document.getElementById('toast-root');
+      if (!root) return;
+      const el = document.createElement('div');
+      el.className = 'pointer-events-auto px-4 py-2.5 rounded-2xl shadow-soft text-sm font-semibold anim-up ' +
+        (kind === 'err'
+          ? 'bg-sand-300 text-ink'
+          : 'bg-white/95 dark:bg-night-card text-ink dark:text-lavender-100 border border-lavender-200 dark:border-night-soft');
+      el.textContent = msg;
+      root.appendChild(el);
+      setTimeout(() => {
+        el.style.transition = 'opacity .4s ease, transform .4s ease';
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(8px)';
+        setTimeout(() => el.remove(), 450);
+      }, 3200);
+    }
+
+    /* ---------- UI-атомы ---------- */
+
+    // Личико настроения: мягкое SVG без ярких цветов
+    function Face({ v, size = 44, active = false }) {
+      const m = moodOf(v);
+      const r = 16;
+      // Кривая рта: от «грусти» (v=1) к «улыбке» (v=5)
+      const mouthY = 20.5 + (v - 3) * 1.6;
+      const mouth = `M 11 ${mouthY + 2.5} Q 16 ${mouthY - (v >= 4 ? 3.5 : v === 3 ? 0 : -3.5) + 2.5} 21 ${mouthY + 2.5}`;
+      return (
+        <svg width={size} height={size} viewBox="0 0 32 32" aria-label={m.label}>
+          <circle cx="16" cy="16" r={r}
+            fill={active ? m.color : m.color + '55'}
+            stroke={m.color} strokeWidth={active ? 2 : 1.5} />
+          <circle cx="11.5" cy="14" r="1.6" fill={active ? '#fff' : '#3B3546'} />
+          <circle cx="20.5" cy="14" r="1.6" fill={active ? '#fff' : '#3B3546'} />
+          <path d={mouth} fill="none" stroke={active ? '#fff' : '#3B3546'} strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      );
+    }
+
+    function Btn({ variant = 'primary', className = '', children, ...rest }) {
+      const base = 'inline-flex items-center justify-center gap-2 rounded-2xl px-5 py-3 font-bold text-sm transition-all duration-300 active:scale-[.97] disabled:opacity-40';
+      const variants = {
+        primary: 'bg-lavender-400 hover:bg-lavender-500 text-white shadow-soft',
+        sage:    'bg-sage-400 hover:bg-sage-500 text-white shadow-soft',
+        ghost:   'bg-white/70 dark:bg-night-soft hover:bg-white dark:hover:bg-night-soft/80 text-ink dark:text-lavender-100 border border-lavender-200 dark:border-night-soft',
+        danger:  'bg-sand-300 hover:bg-sand-400 text-ink',
+        bare:    'text-ink-soft dark:text-lavender-300 hover:text-ink dark:hover:text-lavender-100'
+      };
+      return <button className={cx(base, variants[variant], className)} {...rest}>{children}</button>;
+    }
+
+    function Chip({ active, onClick, children, ...rest }) {
+      return (
+        <button type="button" onClick={onClick}
+          className={cx('px-3.5 py-2 rounded-2xl text-sm font-semibold transition-all duration-300 border',
+            active
+              ? 'bg-lavender-300 dark:bg-lavender-500 border-lavender-400 text-ink dark:text-white shadow-soft'
+              : 'bg-white/70 dark:bg-night-soft border-lavender-200 dark:border-night-soft text-ink-soft dark:text-lavender-300 hover:border-lavender-400')}
+          {...rest}>
+          {children}
+        </button>
+      );
+    }
+
+    function Toggle({ on, onChange, label }) {
+      return (
+        <button type="button" role="switch" aria-checked={on} aria-label={label}
+          onClick={() => onChange(!on)}
+          className={cx('w-12 h-7 rounded-full relative transition-all duration-300 shrink-0',
+            on ? 'bg-lavender-400' : 'bg-stone-300 dark:bg-night-soft')}>
+          <span className={cx('absolute top-1 w-5 h-5 rounded-full bg-white shadow transition-all duration-300',
+            on ? 'left-6' : 'left-1')} />
+        </button>
+      );
+    }
+
+    function SliderRow({ label, value, onChange, tint = '#B8A9D9' }) {
+      return (
+        <div className="space-y-1.5">
+          <div className="flex justify-between text-sm font-semibold">
+            <span className="text-ink-soft dark:text-lavender-300">{label}</span>
+            <span className="text-ink dark:text-lavender-100 tabular-nums">{value}/10</span>
+          </div>
+          <input type="range" min="0" max="10" step="1" value={value}
+            onChange={(e) => onChange(Number(e.target.value))}
+            className="w-full"
+            style={{ background: `linear-gradient(90deg, ${tint} ${value * 10}%, #E4DDF2 ${value * 10}%)` }} />
+        </div>
+      );
+    }
+
+    // Модальное окно: на телефоне — нижний лист, на десктопе — по центру
+    function Modal({ open, onClose, title, children, footer }) {
+      useEffect(() => {
+        if (!open) return;
+        const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [open, onClose]);
+      if (!open) return null;
+      return (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-ink/30 dark:bg-black/50 backdrop-blur-[2px] anim-fade" onClick={onClose} />
+          <div className="relative w-full sm:max-w-md max-h-[92vh] overflow-y-auto bg-white dark:bg-night-card rounded-t-3xl sm:rounded-3xl p-5 pb-7 shadow-soft anim-up">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-extrabold">{title}</h3>
+              <button onClick={onClose} aria-label="Закрыть"
+                className="w-9 h-9 grid place-items-center rounded-full bg-lavender-100 dark:bg-night-soft text-ink-soft dark:text-lavender-300 transition hover:bg-lavender-200">
+                <X size={18} />
+              </button>
+            </div>
+            {children}
+            {footer}
+          </div>
+        </div>
+      );
+    }
+
+    function Section({ title, icon: Icon, children, className = '' }) {
+      return (
+        <section className={cx('bg-white dark:bg-night-card rounded-3xl p-5 shadow-soft', className)}>
+          {title && (
+            <h3 className="flex items-center gap-2 font-extrabold mb-4">
+              {Icon && <Icon size={17} className="text-lavender-500" />}
+              {title}
+            </h3>
+          )}
+          {children}
+        </section>
+      );
+    }
+
+    function Disclaimer({ className = '' }) {
+      return (
+        <p className={cx('flex items-start gap-2 text-xs text-ink-soft dark:text-lavender-300/80 leading-relaxed', className)}>
+          <Info size={14} className="shrink-0 mt-0.5" />
+          {DISCLAIMER}
+        </p>
+      );
+    }
+
+    /* ---------- SOS: телефоны доверия (экран входа + профиль) ---------- */
+    function SOSModal({ open, onClose }) {
+      return (
+        <Modal open={open} onClose={onClose} title="Мы рядом. Кому позвонить?">
+          <div className="space-y-3">
+            <Disclaimer className="mb-1" />
+            {SOS_LINES.map((l) => (
+              <a key={l.num} href={'tel:' + l.num}
+                className="flex items-center gap-3 p-3.5 rounded-2xl bg-sand-100 dark:bg-night-soft border border-sand-200 dark:border-night-soft hover:border-lavender-400 transition-all duration-300 group">
+                <span className="w-10 h-10 grid place-items-center rounded-full bg-lavender-200 dark:bg-lavender-500/30 text-lavender-500 shrink-0 group-hover:scale-105 transition-transform duration-300">
+                  <Phone size={18} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block font-extrabold tabular-nums">{l.label}</span>
+                  <span className="block text-xs text-ink-soft dark:text-lavender-300">
+                    <b>{l.num}</b>{l.desc ? ' · ' + l.desc : ''}
+                  </span>
+                </span>
+              </a>
+            ))}
+            <p className="text-xs text-ink-soft dark:text-lavender-300/80 leading-relaxed pt-1">
+              Если есть непосредственная угроза жизни — звоните <b>112</b>. Приложение не заменяет
+              консультацию врача и помощь близких.
+            </p>
+          </div>
+        </Modal>
+      );
+    }
+
+    /* ---------- Этап 1: Онбординг (3 экрана, мягкий вход) ---------- */
+    function Onboarding({ onDone }) {
+      const { state, update } = useStore();
+      const [step, setStep] = useState(0);
+      const [time, setTime] = useState(state.onb.reminderTime);
+      const [remind, setRemind] = useState(state.onb.reminderOn);
+      const [tracked, setTracked] = useState(state.onb.tracked);
+      const [sos, setSos] = useState(false);
+
+      const toggleTrack = (id) =>
+        setTracked((t) => (t.includes(id) ? t.filter((x) => x !== id) : t.concat(id)));
+
+      const finish = (reminderOn) => {
+        update({
+          onboarded: true,
+          onb: { ...state.onb, reminderTime: time, reminderOn: reminderOn, tracked: tracked, reminderText: state.onb.reminderText }
+        });
+        onDone();
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center px-5 py-10 max-w-md mx-auto text-center">
+          {/* Точки прогресса */}
+          <div className="flex gap-2 mb-8" aria-hidden="true">
+            {[0, 1, 2].map((i) => (
+              <span key={i} className={cx('h-1.5 rounded-full transition-all duration-500',
+                i === step ? 'w-7 bg-lavender-400' : 'w-1.5 bg-lavender-200 dark:bg-night-soft')} />
+            ))}
+          </div>
+
+          {step === 0 && (
+            <div className="anim-up flex flex-col items-center">
+              {/* Мягкая иллюстрация: дышащие пастельные круги */}
+              <svg width="150" height="150" viewBox="0 0 120 120" className="mb-7" aria-hidden="true">
+                <circle cx="60" cy="60" r="46" fill="#E4DDF2" className="breath-circle" />
+                <circle cx="60" cy="60" r="30" fill="#C8D5C2" opacity="0.9" />
+                <circle cx="60" cy="60" r="14" fill="#F5EDE1" />
+              </svg>
+              <h1 className="text-3xl font-extrabold leading-tight mb-3">Ваше пространство<br />спокойствия</h1>
+              <p className="text-ink-soft dark:text-lavender-300 leading-relaxed mb-5">
+                Здесь можно спокойно отмечать, как вы себя чувствуете — без оценок,
+                сроков и чувства вины.
+              </p>
+              <Disclaimer className="justify-center mb-7" />
+              <Btn onClick={() => setStep(1)} className="w-full py-3.5 text-base">
+                Начать путь <ArrowRight size={18} />
+              </Btn>
+              <button onClick={() => setSos(true)}
+                className="mt-4 text-sm font-bold text-sand-400 hover:text-lavender-500 transition-colors duration-300 flex items-center gap-1.5">
+                <ShieldAlert size={16} /> Мне нужна помощь сейчас
+              </button>
+            </div>
+          )}
+
+          {step === 1 && (
+            <div className="anim-up w-full">
+              <Bell size={34} className="mx-auto mb-4 text-lavender-500" />
+              <h2 className="text-2xl font-extrabold mb-2">В какое время вам удобно проверять самочувствие?</h2>
+              <p className="text-ink-soft dark:text-lavender-300 mb-7">
+                Мягкое напоминание в выбранное время. Можно не отвечать — это ваш темп.
+              </p>
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
+                className="w-full bg-white dark:bg-night-soft border border-lavender-200 dark:border-night-soft rounded-2xl p-4 text-center text-2xl font-extrabold tabular-nums mb-5 focus:outline-none focus:border-lavender-400 transition-colors duration-300" />
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-white dark:bg-night-soft border border-lavender-200 dark:border-night-soft mb-7">
+                <span className="text-sm font-semibold">Включить напоминание</span>
+                <Toggle on={remind} onChange={setRemind} label="Включить напоминание" />
+              </div>
+              <Btn onClick={() => setStep(2)} className="w-full py-3.5">Далее</Btn>
+              <button onClick={() => { setRemind(false); finish(false); }}
+                className="w-full mt-3 py-3 text-sm font-bold text-ink-soft dark:text-lavender-300 hover:text-ink dark:hover:text-lavender-100 transition-colors duration-300">
+                Пропустить
+              </button>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="anim-up w-full">
+              <Activity size={34} className="mx-auto mb-4 text-sage-500" />
+              <h2 className="text-2xl font-extrabold mb-2">Что для вас важно отслеживать?</h2>
+              <p className="text-ink-soft dark:text-lavender-300 mb-6">Можно выбрать несколько пунктов — потом это меняется в настройках.</p>
+              <div className="flex flex-wrap justify-center gap-2.5 mb-8">
+                {TRACK_OPTIONS.map((o) => (
+                  <Chip key={o.id} active={tracked.includes(o.id)} onClick={() => toggleTrack(o.id)}>
+                    {tracked.includes(o.id) && <Check size={14} className="inline mr-1 -mt-0.5" />}
+                    {o.label}
+                  </Chip>
+                ))}
+              </div>
+              <Btn variant="sage" onClick={() => finish(remind)} className="w-full py-3.5"
+                disabled={tracked.length === 0}>
+                Готово
+              </Btn>
+              <p className="text-xs text-ink-soft dark:text-lavender-300/80 mt-4">
+                Регистрация не нужна — ваши записи хранятся только в этом браузере.
+              </p>
+            </div>
+          )}
+
+          <SOSModal open={sos} onClose={() => setSos(false)} />
+        </div>
+      );
+    }
+
+    /* ---------- Форма чекина (модальное окно) ---------- */
+    function readDraft() {
+      try {
+        const raw = localStorage.getItem(DRAFT_KEY);
+        if (raw) return JSON.parse(raw);
+      } catch (e) { /* повреждённый черновик — просто игнорируем */ }
+      return null;
+    }
+    const emptyForm = (mood) => ({ mood: mood || 3, emo: [], energy: 5, anxiety: 5, sleep: 5, ctx: [], note: '', id: null, timestamp: null });
+
+    function CheckIn({ open, onClose, initial, autoFocusNote }) {
+      const { state, saveEntry } = useStore();
+      const [f, setF] = useState(emptyForm());
+      const [noteRef, setNoteRef] = useState(null);
+
+      // Открытие: из записи (редактирование) или из черновика (авто-сохранение)
+      useEffect(() => {
+        if (!open) return;
+        if (initial) {
+          setF({
+            id: initial.id, timestamp: initial.timestamp,
+            mood: initial.mood_score, emo: initial.emotions.slice(),
+            energy: initial.metrics.energy, anxiety: initial.metrics.anxiety, sleep: initial.metrics.sleep_quality,
+            ctx: initial.context_tags.slice(), note: initial.note || ''
+          });
+        } else {
+          const d = readDraft();
+          setF(d ? { ...emptyForm(), ...d } : emptyForm());
+        }
+      }, [open, initial]);
+
+      // Авто-сохранение черновика при вводе (задержка 400 мс)
+      useEffect(() => {
+        if (!open) return;
+        const t = setTimeout(() => {
+          try { localStorage.setItem(DRAFT_KEY, JSON.stringify(f)); } catch (e) {}
+        }, 400);
+        return () => clearTimeout(t);
+      }, [f, open]);
+
+      useEffect(() => { if (open && autoFocusNote && noteRef) noteRef.focus(); }, [open, autoFocusNote]);
+
+      const set = (patch) => setF((x) => ({ ...x, ...patch }));
+
+      const toggleEmo = (t) => setF((x) => {
+        if (x.emo.includes(t)) return { ...x, emo: x.emo.filter((y) => y !== t) };
+        if (x.emo.length >= 3) { showToast('Можно выбрать до трёх чувств — этого достаточно'); return x; }
+        return { ...x, emo: x.emo.concat(t) };
+      });
+
+      // Голосовой ввод (если браузер поддерживает)
+      const startVoice = () => {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) { showToast('Голосовой ввод не поддерживается этим браузером', 'err'); return; }
+        try {
+          const r = new SR();
+          r.lang = 'ru-RU';
+          r.onresult = (e) => {
+            const text = Array.from(e.results).map((x) => x[0].transcript).join(' ');
+            setF((x) => ({ ...x, note: (x.note ? x.note + ' ' : '') + text }));
+          };
+          r.onerror = () => showToast('Не получилось распознать речь — попробуйте ещё раз', 'err');
+          r.start();
+          showToast('Слушаю вас…');
+        } catch (e) { showToast('Микрофон недоступен', 'err'); }
+      };
+
+      const submit = () => {
+        const entry = {
+          id: f.id || uid('entry'),
+          timestamp: f.timestamp || new Date().toISOString(),
+          mood_score: f.mood,
+          emotions: f.emo,
+          metrics: { energy: f.energy, anxiety: f.anxiety, sleep_quality: f.sleep },
+          context_tags: f.ctx,
+          note: f.note.trim(),
+          is_private: true
+        };
+        try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+        saveEntry(entry);
+        onClose();
+      };
+
+      return (
+        <Modal open={open} onClose={onClose} title="Как вы сейчас?"
+          footer={
+            <div className="mt-5 flex gap-3">
+              <Btn variant="ghost" onClick={onClose} className="flex-1">Позже</Btn>
+              <Btn variant="sage" onClick={submit} className="flex-1">Сохранить</Btn>
+            </div>
+          }>
+          <div className="space-y-5">
+            {/* 1. Оценка настроения — 5 личиков */}
+            <div>
+              <p className="text-sm font-bold text-ink-soft dark:text-lavender-300 mb-2">Настроение</p>
+              <div className="flex justify-between gap-1">
+                {MOODS.map((m) => (
+                  <button key={m.v} onClick={() => set({ mood: m.v })}
+                    aria-label={m.label} title={m.label}
+                    className={cx('p-1.5 rounded-2xl transition-all duration-300',
+                      f.mood === m.v ? 'bg-lavender-100 dark:bg-night-soft scale-105' : 'hover:bg-lavender-100/60 dark:hover:bg-night-soft/60')}>
+                    <Face v={m.v} active={f.mood === m.v} />
+                  </button>
+                ))}
+              </div>
+              <p className="text-center text-xs font-semibold text-ink-soft dark:text-lavender-300 mt-1">{moodOf(f.mood).label}</p>
+            </div>
+
+            {/* 2. Теги эмоций (до 3) */}
+            <div>
+              <p className="text-sm font-bold text-ink-soft dark:text-lavender-300 mb-2">
+                Чувства <span className="font-normal">· до трёх</span>
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {state.emotionTags.map((t) => (
+                  <Chip key={t} active={f.emo.includes(t)} onClick={() => toggleEmo(t)}>{t}</Chip>
+                ))}
+              </div>
+            </div>
+
+            {/* 3. Шкалы (включаются в настройках) */}
+            {(state.scales.energy || state.scales.anxiety || state.scales.sleep) && (
+              <div className="space-y-4 p-4 rounded-2xl bg-sand-100 dark:bg-night-soft">
+                {state.scales.energy && <SliderRow label="Энергия" value={f.energy} onChange={(v) => set({ energy: v })} tint="#A8BCA1" />}
+                {state.scales.anxiety && <SliderRow label="Тревожность" value={f.anxiety} onChange={(v) => set({ anxiety: v })} tint="#B8A9D9" />}
+                {state.scales.sleep && <SliderRow label="Качество сна (прошлой ночью)" value={f.sleep} onChange={(v) => set({ sleep: v })} tint="#D9BC8F" />}
+              </div>
+            )}
+
+            {/* 4. Контекст */}
+            <div>
+              <p className="text-sm font-bold text-ink-soft dark:text-lavender-300 mb-2">Контекст дня</p>
+              <div className="flex flex-wrap gap-2">
+                {state.contextTags.map((t) => (
+                  <Chip key={t} active={f.ctx.includes(t)}
+                    onClick={() => set({ ctx: f.ctx.includes(t) ? f.ctx.filter((y) => y !== t) : f.ctx.concat(t) })}>
+                    {t}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+
+            {/* 5. Заметка с микрофоном */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-bold text-ink-soft dark:text-lavender-300">Заметка</p>
+                <button onClick={startVoice}
+                  className="flex items-center gap-1.5 text-xs font-bold text-lavender-500 hover:text-lavender-400 transition-colors duration-300">
+                  <Mic size={14} /> Голосом
+                </button>
+              </div>
+              <textarea ref={setNoteRef} value={f.note} onChange={(e) => set({ note: e.target.value })}
+                rows="3" placeholder="Что сегодня было важного? Можно оставить пустым…"
+                className="w-full bg-white dark:bg-night border border-lavender-200 dark:border-night-soft rounded-2xl p-3.5 text-sm resize-none focus:outline-none focus:border-lavender-400 transition-colors duration-300" />
+            </div>
+          </div>
+        </Modal>
+      );
+    }
+
+    /* ---------- Фича «Дыхание»: мягкая помощь при низком настроении ---------- */
+    function Breathing({ open, onClose }) {
+      const [stage, setStage] = useState('offer'); // offer -> run -> done
+      const [cycle, setCycle] = useState(0);
+      const [phase, setPhase] = useState('Вдох');
+
+      useEffect(() => {
+        if (!open) { setStage('offer'); setCycle(0); setPhase('Вдох'); return; }
+      }, [open]);
+
+      // Запуск упражнения: 3 цикла по 8 секунд (вдох 4с / выдох 4с)
+      useEffect(() => {
+        if (!open || stage !== 'run') return;
+        const phaseTimer = setInterval(() => setPhase((p) => (p === 'Вдох' ? 'Выдох' : 'Вдох')), 4000);
+        const cycleTimer = setInterval(() => {
+          setCycle((c) => {
+            if (c >= 3) { clearInterval(cycleTimer); clearInterval(phaseTimer); setStage('done'); return c; }
+            return c + 1;
+          });
+        }, 8000);
+        return () => { clearInterval(phaseTimer); clearInterval(cycleTimer); };
+      }, [open, stage]);
+
+      return (
+        <Modal open={open} onClose={onClose} title={stage === 'offer' ? 'Бережно к себе' : stage === 'run' ? 'Дыхание' : 'Готово'}>
+          {stage === 'offer' && (
+            <div className="text-center anim-up">
+              <Heart size={36} className="mx-auto mb-3 text-lavender-400" />
+              <p className="text-ink-soft dark:text-lavender-300 leading-relaxed mb-6">
+                Кажется, вам непросто. Это нормально.<br />
+                Сделаем вместе 3 дыхательных упражнения?
+              </p>
+              <div className="flex gap-3">
+                <Btn variant="ghost" onClick={onClose} className="flex-1">Не сейчас</Btn>
+                <Btn onClick={() => setStage('run')} className="flex-1">Да, давайте</Btn>
+              </div>
+            </div>
+          )}
+
+          {stage === 'run' && (
+            <div className="flex flex-col items-center py-4 anim-fade">
+              <div className="relative w-48 h-48 grid place-items-center mb-6">
+                <div className="absolute inset-0 rounded-full bg-lavender-200 dark:bg-lavender-500/25 breath-circle" />
+                <div className="absolute inset-6 rounded-full bg-lavender-300/70 dark:bg-lavender-500/35 breath-circle" />
+                <span className="relative font-extrabold text-lg text-ink dark:text-lavender-100">{phase}…</span>
+              </div>
+              <p className="text-sm font-semibold text-ink-soft dark:text-lavender-300">
+                Цикл {Math.min(cycle + (stage === 'done' ? 0 : 1), 3)} из 3
+              </p>
+              <p className="text-xs text-ink-soft/80 dark:text-lavender-300/70 mt-2">Следуйте за кругом: медленно вдохните и выдохните</p>
+              <button onClick={onClose} className="mt-6 text-sm font-bold text-ink-soft dark:text-lavender-300 hover:opacity-70 transition-opacity duration-300">
+                Закрыть
+              </button>
+            </div>
+          )}
+
+          {stage === 'done' && (
+            <div className="text-center anim-up py-2">
+              <div className="w-16 h-16 mx-auto mb-4 grid place-items-center rounded-full bg-sage-200 dark:bg-sage-500/30 anim-pop">
+                <Check size={30} className="text-sage-500" />
+              </div>
+              <p className="text-ink-soft dark:text-lavender-300 leading-relaxed mb-6">
+                Спасибо, что позаботились о себе.<br />Вы молодец — это уже забота.
+              </p>
+              <Btn onClick={onClose} className="w-full">Вернуться</Btn>
+            </div>
+          )}
+        </Modal>
+      );
+    }
+
+    /* ---------- Главный экран (Home / ежедневный чекин) ---------- */
+    function Home() {
+      const { state, saveEntry } = useStore();
+      const [open, setOpen] = useState(false);
+      const [editing, setEditing] = useState(null); // запись за сегодня для редактирования
+      const [noteMode, setNoteMode] = useState(false);
+
+      const entries = useMemo(
+        () => state.entries.slice().sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
+        [state.entries]
+      );
+      const todayKey = localDayKey(new Date());
+      const today = entries.find((e) => localDayKey(e.timestamp) === todayKey) || null;
+      const recent = entries.filter((e) => !today || e.id !== today.id).slice(0, 5);
+
+      const hour = new Date().getHours();
+      const greeting = hour < 5 ? 'Доброй ночи' : hour < 12 ? 'Доброе утро' : hour < 18 ? 'Добрый день' : 'Добрый вечер';
+
+      const openCheckin = (mood, noteFocus) => {
+        setEditing(today);
+        setNoteMode(!!noteFocus);
+        if (mood && !today) {
+          // быстрый старт с выбранным настроением — подменим черновик
+          try { localStorage.setItem(DRAFT_KEY, JSON.stringify(emptyForm(mood))); } catch (e) {}
+        }
+        setOpen(true);
+      };
+
+      return (
+        <div className="space-y-5 anim-up">
+          {/* Приветствие */}
+          <div>
+            <p className="text-sm font-bold text-lavender-500">{greeting}</p>
+            <h2 className="text-2xl font-extrabold leading-tight">
+              {entries.length ? 'Рады видеть вас снова. Как вы себя чувствуете сегодня?' : 'Добро пожаловать! Как вы себя чувствуете сегодня?'}
+            </h2>
+          </div>
+
+          {/* Карточка «Как вы сейчас?» */}
+          <div className="bg-white dark:bg-night-card rounded-3xl p-6 shadow-soft">
+            <h3 className="text-center font-extrabold mb-4">Как вы сейчас?</h3>
+            <div className="flex justify-between gap-1 mb-5">
+              {MOODS.map((m) => (
+                <button key={m.v} onClick={() => openCheckin(m.v, false)}
+                  aria-label={m.label} title={m.label}
+                  className="p-1 rounded-2xl hover:bg-lavender-100 dark:hover:bg-night-soft transition-all duration-300 hover:scale-105">
+                  <Face v={m.v} size={46} active={!!today && today.mood_score === m.v} />
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-3">
+              <Btn variant="ghost" className="flex-1" onClick={() => openCheckin(null, true)}>
+                <Pencil size={16} /> Быстрая заметка
+              </Btn>
+              <Btn variant="ghost" className="flex-1" onClick={() => openCheckin(null, true)}>
+                <Mic size={16} /> Голосом
+              </Btn>
+            </div>
+            {today && (
+              <p className="text-center text-xs text-ink-soft dark:text-lavender-300 mt-3">
+                Сегодня уже отмечено · <button onClick={() => openCheckin(null, false)} className="font-bold text-lavender-500 hover:underline">изменить</button>
+              </p>
+            )}
+          </div>
+
+          {/* Последние записи */}
+          <Section title="Последние записи" icon={CalendarIcon}>
+            {recent.length === 0 ? (
+              <p className="text-sm text-ink-soft dark:text-lavender-300 text-center py-3">
+                Пока записей нет. Не торопитесь — первая появится, когда вы будете готовы.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {recent.map((e) => (
+                  <li key={e.id} className="flex items-center gap-3">
+                    <Face v={e.mood_score} size={34} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-bold">{ruDateShort(e.timestamp)}</p>
+                      <p className="text-xs text-ink-soft dark:text-lavender-300 truncate">
+                        {[e.emotions.join(', '), e.context_tags.join(', ')].filter(Boolean).join(' · ') || moodOf(e.mood_score).label}
+                        {e.note ? ' — ' + e.note : ''}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
+          {/* SOS — быстрый доступ */}
+          <SOSButton />
+
+          <CheckIn open={open} onClose={() => setOpen(false)} initial={editing} autoFocusNote={noteMode} />
+        </div>
+      );
+    }
+
+    function SOSButton({ className = '' }) {
+      const [sos, setSos] = useState(false);
+      return (
+        <>
+          <button onClick={() => setSos(true)}
+            className={cx('w-full flex items-center justify-center gap-2 py-3 rounded-2xl border border-sand-300 dark:border-night-soft text-sm font-extrabold text-sand-400 dark:text-sand-300 hover:bg-sand-200/60 dark:hover:bg-night-soft transition-all duration-300', className)}>
+            <ShieldAlert size={17} /> SOS — телефоны доверия
+          </button>
+          <SOSModal open={sos} onClose={() => setSos(false)} />
+        </>
+      );
+    }
+
+    /* ---------- Аналитика: данные ---------- */
+    function groupByDay(entries) {
+      const byDay = {};
+      entries.forEach((e) => {
+        const k = localDayKey(e.timestamp);
+        if (!byDay[k]) byDay[k] = { mood: [], energy: [], anxiety: [], sleep: [] };
+        byDay[k].mood.push(e.mood_score);
+        byDay[k].energy.push(e.metrics.energy);
+        byDay[k].anxiety.push(e.metrics.anxiety);
+        byDay[k].sleep.push(e.metrics.sleep_quality);
+      });
+      const avg = (a) => Math.round((a.reduce((s, x) => s + x, 0) / a.length) * 10) / 10;
+      return Object.keys(byDay).sort().map((k) => ({
+        key: k,
+        label: new Date(k + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }),
+        mood: avg(byDay[k].mood),
+        energy: avg(byDay[k].energy),
+        anxiety: avg(byDay[k].anxiety),
+        sleep: avg(byDay[k].sleep)
+      }));
+    }
+
+    function chartDataFor(entries, days) {
+      const since = Date.now() - days * 864e5;
+      const inPeriod = entries.filter((e) => new Date(e.timestamp).getTime() >= since);
+      return groupByDay(inPeriod);
+    }
+
+    // Бережные инсайты: только мягкие наблюдения, без запугивания цифрами
+    function computeInsights(entries) {
+      const out = [];
+      if (entries.length < 5) return out;
+      const withMetric = (k) => entries.filter((e) => typeof e.metrics[k] === 'number');
+      const mean = (arr) => arr.reduce((s, x) => s + x, 0) / arr.length;
+
+      // 1) День недели с пониженной энергией
+      const wd = [[], [], [], [], [], [], []];
+      withMetric('energy').forEach((e) => wd[weekdayIdx(e.timestamp)].push(e.metrics.energy));
+      const allE = withMetric('energy').map((e) => e.metrics.energy);
+      if (allE.length >= 6) {
+        const overall = mean(allE);
+        let worst = -1, worstAvg = Infinity;
+        wd.forEach((arr, i) => { if (arr.length >= 2 && mean(arr) < worstAvg) { worstAvg = mean(arr); worst = i; } });
+        if (worst >= 0 && overall - worstAvg >= 0.8) {
+          out.push(`По ${['понедельникам', 'вторникам', 'средам', 'четвергам', 'пятницам', 'субботам', 'воскресеньям'][worst]} уровень энергии обычно ниже — возможно, это самый загруженный день.`);
+        }
+      }
+
+      // 2) Спорт и тревожность
+      const sport = entries.filter((e) => e.context_tags.includes('Спорт')).map((e) => e.metrics.anxiety);
+      const noSport = entries.filter((e) => !e.context_tags.includes('Спорт')).map((e) => e.metrics.anxiety);
+      if (sport.length >= 2 && noSport.length >= 2) {
+        const a = mean(sport), b = mean(noSport);
+        if (b > 0 && (b - a) / b >= 0.08) {
+          out.push(`В дни, когда вы отмечали «Спорт», тревожность была ниже примерно на ${Math.round(((b - a) / b) * 100)}%.`);
+        }
+      }
+
+      // 3) Сон и настроение
+      const sleepOk = entries.filter((e) => e.metrics.sleep_quality >= 7).map((e) => e.mood_score);
+      const sleepLow = entries.filter((e) => e.metrics.sleep_quality < 7).map((e) => e.mood_score);
+      if (sleepOk.length >= 3 && sleepLow.length >= 3) {
+        const a = mean(sleepOk), b = mean(sleepLow);
+        if (a > b) {
+          out.push(`После ночей с хорошим сном (7+ из 10) настроение в среднем выше — тело вам благодарно.`);
+        }
+      }
+      return out.slice(0, 3);
+    }
+
+    function ChartTip({ active, payload, label }) {
+      if (!active || !payload || !payload.length) return null;
+      return (
+        <div className="bg-white dark:bg-night-card rounded-2xl shadow-soft border border-lavender-100 dark:border-night-soft px-3 py-2 text-xs">
+          <p className="font-extrabold mb-1">{label}</p>
+          {payload.map((p) => (
+            <p key={p.dataKey} style={{ color: p.stroke }} className="font-semibold">
+              {p.name}: {p.value}
+            </p>
+          ))}
+        </div>
+      );
+    }
+
+    /* ---------- Экспорт отчёта PDF (через печать браузера) ---------- */
+    function exportReport(entries, days, insights) {
+      const since = Date.now() - days * 864e5;
+      const period = entries.filter((e) => new Date(e.timestamp).getTime() >= since)
+        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      if (!period.length) { showToast('За этот период пока нет записей', 'err'); return; }
+
+      const mean = (f) => Math.round(period.reduce((s, e) => s + f(e), 0) / period.length * 10) / 10;
+      const avgMood = mean((e) => e.mood_score);
+      const avgE = mean((e) => e.metrics.energy);
+      const avgA = mean((e) => e.metrics.anxiety);
+      const avgS = mean((e) => e.metrics.sleep_quality);
+
+      // Простой SVG-график настроения для отчёта (без внешних библиотек)
+      const W = 640, H = 170, P = 14;
+      const pts = period.map((e, i) => {
+        const x = P + (i / Math.max(period.length - 1, 1)) * (W - 2 * P);
+        const y = H - P - ((e.mood_score - 1) / 4) * (H - 2 * P);
+        return [x, y];
+      });
+      const poly = pts.map((p) => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+      const dots = pts.map((p, i) =>
+        `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="4" fill="#B8A9D9"/>`).join('');
+
+      const rows = period.slice().reverse().map((e) =>
+        `<tr>
+          <td>${ruDateShort(e.timestamp)}</td>
+          <td>${e.mood_score}/5</td>
+          <td>${e.emotions.join(', ') || '—'}</td>
+          <td>${e.context_tags.join(', ') || '—'}</td>
+          <td>${(e.note || '').replace(/</g, '&lt;')}</td>
+        </tr>`).join('');
+
+      const html = `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
+      <title>MindBalance — отчёт за ${ruDateFull(Date.now())}</title>
+      <style>
+        body{font-family:Georgia,serif;color:#3B3546;background:#FAF7F2;margin:40px;line-height:1.5}
+        h1{font-size:26px;margin:0 0 4px;color:#6E677B;letter-spacing:.5px}
+        h2{font-size:16px;margin:28px 0 10px;color:#9C8AC4;text-transform:uppercase;letter-spacing:1px}
+        .sub{color:#6E677B;font-size:13px;margin-bottom:24px}
+        .cards{display:flex;gap:12px;flex-wrap:wrap}
+        .card{background:#fff;border:1px solid #E4DDF2;border-radius:14px;padding:14px 18px;min-width:130px}
+        .card b{display:block;font-size:24px;color:#3B3546}
+        .card span{font-size:12px;color:#6E677B}
+        table{width:100%;border-collapse:collapse;font-size:12px;background:#fff;border:1px solid #E4DDF2}
+        th{background:#E4DDF2;text-align:left;padding:8px;font-size:11px}
+        td{padding:8px;border-top:1px solid #F1EDF9;vertical-align:top}
+        li{margin-bottom:6px;font-size:13px}
+        .note{margin-top:30px;font-size:11px;color:#6E677B;border-top:1px solid #E4DDF2;padding-top:12px}
+        svg{background:#fff;border:1px solid #E4DDF2;border-radius:14px}
+        @media print{body{margin:12mm}}
+      </style></head><body>
+      <h1>MindBalance — отчёт</h1>
+      <div class="sub">Период: последние ${days} дней · сформирован ${ruDateFull(Date.now())} · записей: ${period.length}</div>
+      <div class="cards">
+        <div class="card"><b>${avgMood}/5</b><span>Среднее настроение</span></div>
+        <div class="card"><b>${avgE}/10</b><span>Энергия</span></div>
+        <div class="card"><b>${avgA}/10</b><span>Тревожность</span></div>
+        <div class="card"><b>${avgS}/10</b><span>Качество сна</span></div>
+      </div>
+      <h2>Динамика настроения</h2>
+      <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+        <polyline points="${poly}" fill="none" stroke="#B8A9D9" stroke-width="2.5" stroke-linejoin="round"/>
+        ${dots}
+      </svg>
+      <h2>Наблюдения</h2>
+      ${insights.length ? '<ul>' + insights.map((i) => '<li>' + i + '</li>').join('') + '</ul>'
+        : '<p style="font-size:13px">Недостаточно данных для наблюдений — отмечайтесь чуть чаще.</p>'}
+      <h2>Записи</h2>
+      <table><thead><tr><th>Дата</th><th>Настр.</th><th>Чувства</th><th>Контекст</th><th>Заметка</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      <div class="note">Документ подготовлен в приложении MindBalance. ${DISCLAIMER}
+      Данные хранятся локально в браузере пользователя.</div>
+      <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); }<\/script>
+      </body></html>`;
+
+      const w = window.open('', '_blank');
+      if (!w) { showToast('Разрешите всплывающие окна — отчёт откроется в новой вкладке', 'err'); return; }
+      w.document.open(); w.document.write(html); w.document.close();
+    }
+
+    /* ---------- Этап 3: Аналитика (Динамика) ---------- */
+    function Analytics() {
+      const { state } = useStore();
+      const [days, setDays] = useState(7);
+      const [overlays, setOverlays] = useState({ energy: false, anxiety: false });
+      const [month, setMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
+      const [dayModal, setDayModal] = useState(null);
+
+      const data = useMemo(() => chartDataFor(state.entries, days), [state.entries, days]);
+      const insights = useMemo(() => computeInsights(state.entries), [state.entries]);
+
+      // Календарь месяца
+      const cal = useMemo(() => {
+        const first = new Date(month.y, month.m, 1);
+        const daysInMonth = new Date(month.y, month.m + 1, 0).getDate();
+        const lead = (first.getDay() + 6) % 7; // неделя с понедельника
+        const byDay = groupByDay(state.entries.filter((e) => {
+          const d = new Date(e.timestamp);
+          return d.getFullYear() === month.y && d.getMonth() === month.m;
+        }));
+        const map = {};
+        byDay.forEach((d) => { map[Number(d.key.slice(8))] = d; });
+        return { lead, daysInMonth, map };
+      }, [month, state.entries]);
+
+      const shiftMonth = (delta) => setMonth(({ y, m }) => {
+        const d = new Date(y, m + delta, 1);
+        return { y: d.getFullYear(), m: d.getMonth() };
+      });
+
+      const monthLabel = new Date(month.y, month.m, 1).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+
+      return (
+        <div className="space-y-5 anim-up">
+          <div>
+            <p className="text-sm font-bold text-lavender-500">Динамика</p>
+            <h2 className="text-2xl font-extrabold">Ваши закономерности — бережно и без оценок</h2>
+          </div>
+
+          {/* График */}
+          <Section>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div className="flex gap-2">
+                {[7, 30, 90].map((d) => (
+                  <Chip key={d} active={days === d} onClick={() => setDays(d)}>{d} дней</Chip>
+                ))}
+              </div>
+              <Btn variant="ghost" className="!px-3 !py-2 text-xs"
+                onClick={() => exportReport(state.entries, days, insights)}>
+                <Download size={14} /> Отчёт PDF
+              </Btn>
+            </div>
+
+            <div className="flex gap-2 mb-3">
+              <span className="text-xs font-bold text-ink-soft dark:text-lavender-300 self-center">Линии:</span>
+              <Chip active onClick={() => {}} className="!cursor-default !py-1.5 !text-xs">
+                <span className="inline-block w-2 h-2 rounded-full bg-lavender-400 mr-1.5" />Настроение
+              </Chip>
+              <Chip active={overlays.energy} className="!py-1.5 !text-xs"
+                onClick={() => setOverlays((o) => ({ ...o, energy: !o.energy }))}>
+                <span className="inline-block w-2 h-2 rounded-full bg-sage-400 mr-1.5" />Энергия
+              </Chip>
+              <Chip active={overlays.anxiety} className="!py-1.5 !text-xs"
+                onClick={() => setOverlays((o) => ({ ...o, anxiety: !o.anxiety }))}>
+                <span className="inline-block w-2 h-2 rounded-full bg-sand-400 mr-1.5" />Тревожность
+              </Chip>
+            </div>
+
+            {data.length < 2 ? (
+              <p className="text-sm text-center text-ink-soft dark:text-lavender-300 py-8">
+                Недостаточно данных для графика.<br />Пара чекинов — и динамика появится.
+              </p>
+            ) : (
+              <div className="h-60 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={data} margin={{ top: 5, right: 8, bottom: 0, left: -22 }}>
+                    <CartesianGrid stroke="#E4DDF2" strokeDasharray="3 6" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#6E677B' }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                    <YAxis domain={[1, 5]} ticks={[1, 2, 3, 4, 5]} tick={{ fontSize: 11, fill: '#6E677B' }} axisLine={false} tickLine={false} />
+                    <Tooltip content={<ChartTip />} />
+                    <Line type="monotone" dataKey="mood" name="Настроение" stroke="#B8A9D9" strokeWidth={3}
+                      dot={{ r: 3, fill: '#B8A9D9' }} activeDot={{ r: 5 }} isAnimationActive animationDuration={700} />
+                    {overlays.energy && (
+                      <Line type="monotone" dataKey="energy" name="Энергия" stroke="#A8BCA1" strokeWidth={2}
+                        strokeDasharray="5 4" dot={false} isAnimationActive animationDuration={700} />
+                    )}
+                    {overlays.anxiety && (
+                      <Line type="monotone" dataKey="anxiety" name="Тревожность" stroke="#D9BC8F" strokeWidth={2}
+                        strokeDasharray="5 4" dot={false} isAnimationActive animationDuration={700} />
+                    )}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            <p className="text-[11px] text-ink-soft/80 dark:text-lavender-300/70 mt-2">
+              Шкала настроения 1–5. Цвета намеренно мягкие: график — не диагноз, а подсказка.
+            </p>
+          </Section>
+
+          {/* Инсайты */}
+          <Section title="Наблюдения" icon={Sparkles}>
+            {insights.length === 0 ? (
+              <p className="text-sm text-ink-soft dark:text-lavender-300">
+                Соберём немного данных — и здесь появятся бережные наблюдения о закономерностях.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {insights.map((t, i) => (
+                  <li key={i} className="flex gap-2.5 text-sm leading-relaxed">
+                    <span className="w-6 h-6 shrink-0 grid place-items-center rounded-full bg-lavender-100 dark:bg-night-soft text-lavender-500 mt-0.5">
+                      <Sparkles size={13} />
+                    </span>
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
+          {/* Календарь */}
+          <Section>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="flex items-center gap-2 font-extrabold">
+                <CalendarIcon size={17} className="text-lavender-500" /> Календарь
+              </h3>
+              <div className="flex items-center gap-1">
+                <button onClick={() => shiftMonth(-1)} aria-label="Предыдущий месяц"
+                  className="w-8 h-8 grid place-items-center rounded-full hover:bg-lavender-100 dark:hover:bg-night-soft transition-colors duration-300"><ChevronLeft size={17} /></button>
+                <span className="text-sm font-bold min-w-[130px] text-center capitalize">{monthLabel}</span>
+                <button onClick={() => shiftMonth(1)} aria-label="Следующий месяц"
+                  className="w-8 h-8 grid place-items-center rounded-full hover:bg-lavender-100 dark:hover:bg-night-soft transition-colors duration-300"><ChevronRight size={17} /></button>
+              </div>
+            </div>
+            <div className="grid grid-cols-7 gap-1.5 text-center">
+              {WEEKDAYS.map((w) => <div key={w} className="text-[10px] font-bold text-ink-soft dark:text-lavender-300 pb-1">{w}</div>)}
+              {Array.from({ length: cal.lead }).map((_, i) => <div key={'x' + i} />)}
+              {Array.from({ length: cal.daysInMonth }).map((_, i) => {
+                const day = i + 1;
+                const rec = cal.map[day];
+                return (
+                  <button key={day} disabled={!rec}
+                    onClick={() => rec && setDayModal(rec)}
+                    className={cx('aspect-square rounded-xl text-xs font-bold transition-all duration-300',
+                      rec ? 'hover:scale-105 text-white shadow-sm' : 'text-ink-soft/40 dark:text-lavender-300/40')}>
+                    {rec ? (
+                      <span className="w-full h-full grid place-items-center rounded-xl"
+                        style={{ background: moodOf(Math.round(rec.mood)).color }}>
+                        {day}
+                      </span>
+                    ) : day}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center justify-center gap-2 mt-4 text-[10px] text-ink-soft dark:text-lavender-300">
+              <span>тяжело</span>
+              {MOODS.map((m) => <span key={m.v} className="w-4 h-3 rounded" style={{ background: m.color }} />)}
+              <span>отлично</span>
+            </div>
+          </Section>
+
+          {/* Сводка дня */}
+          <Modal open={!!dayModal} onClose={() => setDayModal(null)} title={dayModal ? ruDateFull(dayModal.key + 'T12:00:00') : ''}>
+            {dayModal && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Face v={Math.round(dayModal.mood)} size={44} active />
+                  <div>
+                    <p className="font-extrabold">{moodOf(Math.round(dayModal.mood)).label}</p>
+                    <p className="text-xs text-ink-soft dark:text-lavender-300">
+                      энергия {dayModal.energy} · тревожность {dayModal.anxiety} · сон {dayModal.sleep}
+                    </p>
+                  </div>
+                </div>
+                {(() => {
+                  const dayEntries = state.entries.filter((e) => localDayKey(e.timestamp) === dayModal.key);
+                  const tags = Array.from(new Set(dayEntries.flatMap((e) => e.context_tags.concat(e.emotions))));
+                  const notes = dayEntries.filter((e) => e.note);
+                  return (
+                    <>
+                      {tags.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {tags.map((t) => <span key={t} className="px-2.5 py-1 rounded-xl bg-lavender-100 dark:bg-night-soft text-xs font-semibold">{t}</span>)}
+                        </div>
+                      )}
+                      {notes.map((e) => (
+                        <p key={e.id} className="text-sm text-ink-soft dark:text-lavender-300 leading-relaxed">
+                          «{e.note}»
+                        </p>
+                      ))}
+                      {!notes.length && <p className="text-sm text-ink-soft dark:text-lavender-300">Заметок в этот день не было — это тоже нормально.</p>}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+          </Modal>
+        </div>
+      );
+    }
+
+    /* ---------- Редактор тегов ---------- */
+    function TagEditor({ title, tags, onAdd, onRemove }) {
+      const [val, setVal] = useState('');
+      const add = () => {
+        const t = val.trim();
+        if (!t) return;
+        if (tags.includes(t)) { showToast('Такой тег уже есть'); return; }
+        onAdd(t); setVal('');
+      };
+      return (
+        <div className="mb-5 last:mb-0">
+          <p className="text-sm font-bold text-ink-soft dark:text-lavender-300 mb-2">{title}</p>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {tags.map((t) => (
+              <span key={t}
+                className="group flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-2xl bg-lavender-100 dark:bg-night-soft text-sm font-semibold">
+                {t}
+                <button onClick={() => onRemove(t)} aria-label={'Убрать ' + t}
+                  className="w-5 h-5 grid place-items-center rounded-full text-ink-soft hover:bg-lavender-300 dark:hover:bg-night transition-all duration-300">
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+            {tags.length === 0 && <span className="text-xs text-ink-soft dark:text-lavender-300">Пока пусто</span>}
+          </div>
+          <div className="flex gap-2">
+            <input value={val} onChange={(e) => setVal(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
+              placeholder="Свой вариант…"
+              className="flex-1 min-w-0 bg-white dark:bg-night border border-lavender-200 dark:border-night-soft rounded-2xl px-3.5 py-2.5 text-sm focus:outline-none focus:border-lavender-400 transition-colors duration-300" />
+            <Btn variant="ghost" className="!px-4 !py-2.5" onClick={add}><Plus size={16} /></Btn>
+          </div>
+        </div>
+      );
+    }
+
+    /* ---------- Этап 4: Профиль и настройки ---------- */
+    function Profile() {
+      const { state, update, deleteAll } = useStore();
+      const [confirmWipe, setConfirmWipe] = useState(false);
+
+      const patchOnb = (p) => update({ onb: { ...state.onb, ...p } });
+
+      const toggleReminder = (on) => {
+        if (on && 'Notification' in window && Notification.permission === 'default') {
+          Notification.requestPermission().catch(() => {});
+        }
+        patchOnb({ reminderOn: on });
+      };
+
+      return (
+        <div className="space-y-5 anim-up">
+          <div>
+            <p className="text-sm font-bold text-lavender-500">Профиль</p>
+            <h2 className="text-2xl font-extrabold">Настройки и безопасность</h2>
+          </div>
+
+          {/* Мои параметры */}
+          <Section title="Мои параметры" icon={Activity}>
+            <TagEditor title="Чувства для чекина"
+              tags={state.emotionTags}
+              onAdd={(t) => update({ emotionTags: state.emotionTags.concat(t) })}
+              onRemove={(t) => update({ emotionTags: state.emotionTags.filter((x) => x !== t) })} />
+            <TagEditor title="Контексты дня"
+              tags={state.contextTags}
+              onAdd={(t) => update({ contextTags: state.contextTags.concat(t) })}
+              onRemove={(t) => update({ contextTags: state.contextTags.filter((x) => x !== t) })} />
+            <p className="text-sm font-bold text-ink-soft dark:text-lavender-300 mb-2">Шкалы в форме чекина</p>
+            <div className="space-y-3">
+              {[['energy', 'Энергия'], ['anxiety', 'Тревожность'], ['sleep', 'Качество сна']].map(([k, label]) => (
+                <div key={k} className="flex items-center justify-between">
+                  <span className="text-sm font-semibold">{label}</span>
+                  <Toggle on={state.scales[k]} label={label}
+                    onChange={(v) => update({ scales: { ...state.scales, [k]: v } })} />
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          {/* Безопасность */}
+          <Section title="Безопасность" icon={ShieldAlert}>
+            <p className="text-sm text-ink-soft dark:text-lavender-300 mb-3">
+              Крупная кнопка быстрого доступа к телефонам доверия и экстренным службам.
+            </p>
+            <SOSButton className="!text-base !py-4 mb-4" />
+            <p className="text-sm font-bold text-ink-soft dark:text-lavender-300 mb-2">Ваши данные</p>
+            <p className="text-xs text-ink-soft dark:text-lavender-300/80 leading-relaxed mb-3">
+              Все записи хранятся <b>только в этом браузере</b>, нигде не отправляются.
+              Синхронизации между устройствами нет — и пароль не нужен.
+            </p>
+            <Btn variant="danger" className="w-full" onClick={() => setConfirmWipe(true)}>
+              <Trash2 size={16} /> Полностью стереть всю историю
+            </Btn>
+          </Section>
+
+          {/* Напоминания */}
+          <Section title="Напоминания" icon={Bell}>
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-sm font-semibold">Напоминание о чекине</span>
+              <Toggle on={state.onb.reminderOn} onChange={toggleReminder} label="Напоминание" />
+            </div>
+            <label className="block mb-4">
+              <span className="text-sm font-bold text-ink-soft dark:text-lavender-300">Время</span>
+              <input type="time" value={state.onb.reminderTime}
+                onChange={(e) => patchOnb({ reminderTime: e.target.value })}
+                className="mt-1.5 w-full bg-white dark:bg-night border border-lavender-200 dark:border-night-soft rounded-2xl p-3.5 text-center text-xl font-extrabold tabular-nums focus:outline-none focus:border-lavender-400 transition-colors duration-300" />
+            </label>
+            <p className="text-sm font-bold text-ink-soft dark:text-lavender-300 mb-2">Текст напоминания</p>
+            <div className="flex flex-wrap gap-2">
+              {REMINDER_TEXTS.map((t) => (
+                <Chip key={t} active={state.onb.reminderText === t} onClick={() => patchOnb({ reminderText: t })}>{t}</Chip>
+              ))}
+            </div>
+            <p className="text-[11px] text-ink-soft/80 dark:text-lavender-300/70 mt-3">
+              Push-сервера нет: напоминание появится, пока приложение открыто. Этого достаточно для MVP.
+            </p>
+          </Section>
+
+          {/* О приложении */}
+          <Section title="О приложении" icon={Info}>
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-sm font-semibold flex items-center gap-2">
+                {state.theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />} Тёмная тема
+              </span>
+              <Toggle on={state.theme === 'dark'} label="Тёмная тема"
+                onChange={(v) => update({ theme: v ? 'dark' : 'light' })} />
+            </div>
+            <Disclaimer />
+            <p className="text-[11px] text-ink-soft/70 dark:text-lavender-300/60 mt-3">
+              MindBalance MVP · данные не покидают браузер · работает офлайн (PWA)
+            </p>
+          </Section>
+
+          {/* Подтверждение стирания */}
+          <Modal open={confirmWipe} onClose={() => setConfirmWipe(false)} title="Стереть всю историю?"
+            footer={
+              <div className="mt-5 flex gap-3">
+                <Btn variant="ghost" onClick={() => setConfirmWipe(false)} className="flex-1">Отмена</Btn>
+                <Btn variant="danger" className="flex-1"
+                  onClick={() => { deleteAll(); setConfirmWipe(false); showToast('История удалена'); }}>
+                  Да, стереть
+                </Btn>
+              </div>
+            }>
+            <p className="text-sm text-ink-soft dark:text-lavender-300 leading-relaxed">
+              Все записи будут удалены <b>без возможности восстановления</b>.
+              Если захотите начать заново — приложение мягко поддержит.
+            </p>
+          </Modal>
+        </div>
+      );
+    }
+
+    /* ---------- Оболочка: шапка, навигация, роутинг ---------- */
+    const ROUTES = {
+      home: { label: 'Главная', icon: Home },
+      analytics: { label: 'Динамика', icon: LineChartIcon },
+      profile: { label: 'Профиль', icon: User }
+    };
+
+    function App() {
+      const [state, setState] = useState(loadState);
+      const [route, setRoute] = useState(() => {
+        const h = (location.hash || '').replace(/^#\/?/, '');
+        return ROUTES[h] ? h : 'home';
+      });
+      const [breathOffer, setBreathOffer] = useState(false);
+
+      // Тёмная тема — через класс dark на <html>
+      useEffect(() => {
+        document.documentElement.classList.toggle('dark', state.theme === 'dark');
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', state.theme === 'dark' ? '#1B1826' : '#B8A9D9');
+      }, [state.theme]);
+
+      // Единственная точка сохранения данных
+      useEffect(() => { persist(state); }, [state]);
+
+      // Роутинг по hash (Подключение -> Главная -> Динамика -> Профиль)
+      useEffect(() => {
+        const onHash = () => {
+          const h = (location.hash || '').replace(/^#\/?/, '');
+          setRoute(ROUTES[h] ? h : 'home');
+        };
+        window.addEventListener('hashchange', onHash);
+        return () => window.removeEventListener('hashchange', onHash);
+      }, []);
+
+      // PWA: офлайн-режим (только по http/https)
+      useEffect(() => {
+        if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+          navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW не установился', e));
+        }
+      }, []);
+
+      const navigate = (r) => {
+        location.hash = '#/' + r;
+        setRoute(r);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      };
+
+      const update = useCallback((patch) => {
+        setState((prev) => ({ ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) }));
+      }, []);
+
+      const saveEntry = useCallback((entry) => {
+        setState((prev) => {
+          const exists = prev.entries.some((e) => e.id === entry.id);
+          const entries = exists ? prev.entries.map((e) => (e.id === entry.id ? entry : e)) : prev.entries.concat(entry);
+          return { ...prev, entries };
+        });
+        showToast('Записано. Вы молодец!', 'ok');
+        if (entry.mood_score < 3) setBreathOffer(true); // мягкая помощь при низком настроении
+      }, []);
+
+      const deleteAll = useCallback(() => setState((prev) => ({ ...prev, entries: [] })), []);
+
+      const store = { state, update, saveEntry, deleteAll };
+
+      if (!state.onboarded) {
+        return (
+          <ToastCtx.Provider value={showToast}>
+            <StoreCtx.Provider value={store}>
+              <Onboarding onDone={() => navigate('home')} />
+            </StoreCtx.Provider>
+          </ToastCtx.Provider>
+        );
+      }
+
+      const Current = route === 'home' ? Home : route === 'analytics' ? Analytics : Profile;
+
+      return (
+        <ToastCtx.Provider value={showToast}>
+          <StoreCtx.Provider value={store}>
+            <div className="min-h-screen flex flex-col">
+              {/* Шапка */}
+              <header className="sticky top-0 z-40 backdrop-blur-md bg-sand-100/85 dark:bg-night/85 border-b border-lavender-100 dark:border-night-soft no-print">
+                <div className="max-w-md mx-auto px-4 h-14 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-8 h-8 grid place-items-center rounded-full bg-lavender-400 text-white font-extrabold text-sm shadow-soft">M</span>
+                    <span className="font-extrabold tracking-tight">MindBalance</span>
+                  </div>
+                  <button onClick={() => update({ theme: state.theme === 'dark' ? 'light' : 'dark' })}
+                    aria-label="Сменить тему"
+                    className="w-9 h-9 grid place-items-center rounded-full bg-white/70 dark:bg-night-soft text-ink-soft dark:text-lavender-300 hover:text-lavender-500 transition-all duration-300 hover:rotate-12">
+                    {state.theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+                  </button>
+                </div>
+              </header>
+
+              {/* Контент */}
+              <main className="flex-1 w-full max-w-md mx-auto px-4 pt-5 pb-32">
+                <Current />
+              </main>
+
+              {/* Нижняя навигация */}
+              <nav className="fixed bottom-0 inset-x-0 z-40 no-print">
+                <div className="max-w-md mx-auto px-4 pb-3">
+                  <div className="flex justify-around bg-white/95 dark:bg-night-card/95 backdrop-blur-md rounded-3xl shadow-soft border border-lavender-100 dark:border-night-soft p-1.5"
+                    style={{ paddingBottom: 'calc(6px + env(safe-area-inset-bottom))' }}>
+                    {Object.keys(ROUTES).map((key) => {
+                      const R = ROUTES[key];
+                      const active = route === key;
+                      return (
+                        <button key={key} onClick={() => navigate(key)}
+                          className={cx('flex-1 flex flex-col items-center gap-0.5 py-2 rounded-2xl text-[11px] font-bold transition-all duration-300',
+                            active ? 'bg-lavender-200 dark:bg-lavender-500/30 text-ink dark:text-lavender-100' : 'text-ink-soft dark:text-lavender-300')}>
+                          <R.icon size={19} />
+                          {R.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </nav>
+
+              {/* Мягкая помощь при низком настроении */}
+              <Breathing open={breathOffer} onClose={() => setBreathOffer(false)} />
+            </div>
+          </StoreCtx.Provider>
+        </ToastCtx.Provider>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
